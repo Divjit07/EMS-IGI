@@ -541,7 +541,10 @@ async function smsContact(request, guard, wave) {
 /* ===================== Twilio Voice (emergency escalation) ===================== */
 
 function publicBaseUrl() {
-  return String(process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
+  let url = String(process.env.PUBLIC_BASE_URL || "").trim();
+  // Common Render mistake: pasting "PUBLIC_BASE_URL=https://..." as the value.
+  url = url.replace(/^PUBLIC_BASE_URL=/i, "").replace(/^["']|["']$/g, "");
+  return url.replace(/\/$/, "");
 }
 
 function voiceConfigured() {
