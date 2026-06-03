@@ -51,7 +51,8 @@ function saveState() {
     if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
     const payload = {
       contactLog,
-      coverageRequests: [...coverageRequests.values()],
+      // Exclude the live setTimeout handle; it can't be serialized.
+      coverageRequests: [...coverageRequests.values()].map(({ timer, ...rest }) => rest),
       phoneToContact: [...phoneToContact.entries()],
     };
     writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2));
@@ -246,13 +247,73 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return earthRadiusKm * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
+/* ===================== Compliance guardrails ===================== */
+// Hard rules the AI dispatcher must respect before offering a shift.
+const MAX_WEEKLY_HOURS = 44; // Ontario standard work week before overtime.
+
+function shiftHours(start, end) {
+  let a = toMinutes(start);
+  let b = toMinutes(end);
+  if (b <= a) b += 24 * 60; // overnight shift
+  return (b - a) / 60;
+}
+
+// Monday..Sunday range containing the given YYYY-MM-DD date.
+function weekRange(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const dayFromMonday = (d.getDay() + 6) % 7;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - dayFromMonday);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return { start: monday, end: sunday };
+}
+
+function weeklyHoursForGuard(guardId, schedule, range) {
+  if (!range) return 0;
+  return schedule
+    .filter((s) => s.guard_id === guardId)
+    .filter((s) => {
+      const d = new Date(`${s.shift_date}T00:00:00`);
+      return d >= range.start && d <= range.end;
+    })
+    .reduce((sum, s) => sum + shiftHours(s.start_time, s.end_time), 0);
+}
+
+// Returns an array of human-readable reasons the guard CANNOT take the shift.
+function guardrailReasons(guard, shift, weeklyHours, newShiftHours) {
+  const reasons = [];
+
+  if (guard.license_expiry) {
+    const expiry = new Date(`${guard.license_expiry}T00:00:00`);
+    const shiftDay = new Date(`${shift.shiftDate}T00:00:00`);
+    if (!Number.isNaN(expiry.getTime()) && expiry < shiftDay) {
+      reasons.push(`Security license expired ${guard.license_expiry}`);
+    }
+  }
+
+  if (weeklyHours + newShiftHours > MAX_WEEKLY_HOURS) {
+    reasons.push(
+      `Would exceed ${MAX_WEEKLY_HOURS}h/week (${Math.round(weeklyHours)}h scheduled + ${Math.round(newShiftHours)}h this shift)`
+    );
+  }
+
+  return reasons;
+}
+
 function findAvailableGuards({ guards, schedule, shift }) {
   const radiusKm = Number(shift.radiusKm || 10);
   const activeGuards = guards.filter((g) => g.status === "active");
   const shiftsToday = schedule.filter((s) => s.shift_date === shift.shiftDate);
+  const range = weekRange(shift.shiftDate);
+  const newShiftHours = shiftHours(shift.startTime, shift.endTime);
   const available = [];
   const availableOutOfRadius = [];
   const busy = [];
+  const blocked = [];
 
   for (const guard of activeGuards) {
     const conflicts = shiftsToday.filter(
@@ -277,6 +338,8 @@ function findAvailableGuards({ guards, schedule, shift }) {
         ) / 10
       : null;
 
+    const weeklyHours = weeklyHoursForGuard(guard.id, schedule, range);
+
     const enriched = {
       ...guard,
       certificationsList: String(guard.certifications || "")
@@ -284,11 +347,18 @@ function findAvailableGuards({ guards, schedule, shift }) {
         .map((c) => c.trim())
         .filter(Boolean),
       distanceKm,
+      weeklyHours: Math.round(weeklyHours * 10) / 10,
       withinRadius: distanceKm == null || distanceKm <= radiusKm,
     };
 
     if (conflicts.length > 0) {
       busy.push({ ...enriched, busyWith: conflicts });
+      continue;
+    }
+
+    const blockReasons = guardrailReasons(guard, shift, weeklyHours, newShiftHours);
+    if (blockReasons.length > 0) {
+      blocked.push({ ...enriched, blockReasons });
     } else if (enriched.withinRadius) {
       available.push(enriched);
     } else {
@@ -305,16 +375,19 @@ function findAvailableGuards({ guards, schedule, shift }) {
   available.sort(byDistance);
   availableOutOfRadius.sort(byDistance);
   busy.sort(byDistance);
+  blocked.sort(byDistance);
 
   return {
     shift,
     available,
     availableOutOfRadius,
     busy,
+    blocked,
     counts: {
       available: available.length,
       outOfRadius: availableOutOfRadius.length,
       busy: busy.length,
+      blocked: blocked.length,
       totalActive: activeGuards.length,
     },
   };
@@ -388,54 +461,273 @@ function makeContact(guard) {
     guardName: guard.name || guard.guardName,
     phone: normalizePhone(guard.phone),
     status: "sent", // sent | yes | no | winner | lost | failed
+    method: "sms", // sms | voice
+    wave: 0,
+    voiceCalled: false,
     error: "",
     sentAt: new Date().toISOString(),
     repliedAt: null,
   };
 }
 
-async function createCoverageRequest(shift, guards) {
+function addActivity(request, text) {
+  request.activity = request.activity || [];
+  request.activity.unshift({ at: new Date().toISOString(), text });
+  if (request.activity.length > 50) request.activity.length = 50;
+}
+
+function logContact(contact, shift, method) {
+  contactLog.unshift({
+    id: randomUUID(),
+    guardId: contact.guardId,
+    guardName: contact.guardName,
+    phone: contact.phone,
+    shiftCode: shift.shiftCode || "",
+    method,
+    note: "",
+    contactedAt: new Date().toISOString(),
+  });
+}
+
+// Send the shift offer to one guard by SMS and register the reply mapping.
+async function smsContact(request, guard, wave) {
+  const contact = makeContact(guard);
+  contact.method = "sms";
+  contact.wave = wave || 1;
+  if (!contact.phone) {
+    contact.status = "failed";
+    contact.error = "No phone number";
+    request.contacts.push(contact);
+    return contact;
+  }
+  try {
+    await sendSms(contact.phone, buildShiftMessage(request.shift));
+    phoneToContact.set(contact.phone, { requestId: request.id, guardId: contact.guardId });
+    logContact(contact, request.shift, "SMS sent");
+  } catch (err) {
+    contact.status = "failed";
+    contact.error = err.message;
+    addActivity(request, `Text to ${contact.guardName} failed: ${err.message}`);
+  }
+  request.contacts.push(contact);
+  return contact;
+}
+
+/* ===================== Twilio Voice (emergency escalation) ===================== */
+
+function publicBaseUrl() {
+  return String(process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
+}
+
+function voiceConfigured() {
+  return twilioConfigured() && Boolean(publicBaseUrl());
+}
+
+function xmlEscape(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function voicePrompt(shift) {
+  const date = shift.shiftDate || "";
+  const time = `${shift.startTime || ""} to ${shift.endTime || ""}`;
+  const site = shift.siteName || shift.siteAddress || "a client site";
+  return (
+    `Hello, this is The Investigators Group with an urgent shift coverage request. ` +
+    `We need a guard at ${site} on ${date}, from ${time}. ` +
+    `To accept this shift, press 1. To decline, press 2.`
+  );
+}
+
+// Place an outbound voice call; Twilio fetches TwiML from our /api/voice/outbound.
+async function placeCall(to, requestId, guardId) {
+  if (!voiceConfigured()) {
+    throw new Error("Voice not configured (needs Twilio + PUBLIC_BASE_URL).");
+  }
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_PHONE_NUMBER;
+  const auth = Buffer.from(`${sid}:${token}`).toString("base64");
+  const twimlUrl = `${publicBaseUrl()}/api/voice/outbound?requestId=${encodeURIComponent(
+    requestId
+  )}&guardId=${encodeURIComponent(guardId)}`;
+
+  const form = new URLSearchParams({ To: to, From: from, Url: twimlUrl, Method: "POST" });
+  const resp = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Basic ${auth}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    }
+  );
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data.message || `Twilio call failed (${resp.status}).`);
+  }
+  return { sid: data.sid, status: data.status };
+}
+
+async function voiceCallContact(request, contact) {
+  if (!contact.phone) return;
+  try {
+    await placeCall(contact.phone, request.id, contact.guardId);
+    contact.voiceCalled = true;
+    addActivity(request, `Calling ${contact.guardName} (AI voice)...`);
+    logContact(contact, request.shift, "Voice call");
+  } catch (err) {
+    addActivity(request, `Call to ${contact.guardName} failed: ${err.message}`);
+  }
+}
+
+/* ===================== Shared accept / decline (first YES wins) ===================== */
+
+async function acceptShift(request, guardId, via) {
+  const contact = request.contacts.find((c) => c.guardId === guardId);
+  if (!contact) return { result: "unknown" };
+  contact.repliedAt = new Date().toISOString();
+
+  if (request.status === "filled") {
+    if (contact.status !== "winner") contact.status = "lost";
+    addActivity(request, `${contact.guardName} accepted, but the shift was already filled.`);
+    saveState();
+    return { result: "late", contact };
+  }
+
+  request.status = "filled";
+  request.winnerGuardId = guardId;
+  contact.status = "winner";
+  if (request.timer) {
+    clearTimeout(request.timer);
+    request.timer = null;
+  }
+  addActivity(request, `${contact.guardName} accepted via ${via}. Shift filled.`);
+
+  for (const other of request.contacts) {
+    if (other.guardId !== guardId && other.status === "sent") {
+      other.status = "lost";
+      if (other.phone) {
+        sendSms(other.phone, "Thanks - this shift has now been filled.").catch(() => {});
+      }
+    }
+  }
+  logContact(contact, request.shift, `Accepted (${via})`);
+  saveState();
+  return { result: "winner", contact };
+}
+
+function declineShift(request, guardId, via) {
+  const contact = request.contacts.find((c) => c.guardId === guardId);
+  if (!contact) return { result: "unknown" };
+  contact.repliedAt = new Date().toISOString();
+  if (contact.status === "sent") contact.status = "no";
+  addActivity(request, `${contact.guardName} declined via ${via}.`);
+  saveState();
+  return { result: "declined", contact };
+}
+
+/* ===================== Manual contact + Multi-wave agent ===================== */
+
+const WAVE_SIZE = 3;
+const WAVE_WAIT_MS = 45000; // fast cadence tuned for live demos
+
+function newRequest(shift, mode) {
   const requestId = randomUUID();
   const request = {
     id: requestId,
     shift,
-    status: "open", // open | filled | closed
+    status: "open", // open | filled
+    mode, // manual | agent
     winnerGuardId: null,
     contacts: [],
+    activity: [],
+    queue: [],
+    waveIndex: 0,
+    voiceDone: false,
+    timer: null,
     createdAt: new Date().toISOString(),
   };
-
-  for (const guard of guards) {
-    const contact = makeContact(guard);
-    if (!contact.phone) {
-      contact.status = "failed";
-      contact.error = "No phone number";
-      request.contacts.push(contact);
-      continue;
-    }
-    try {
-      await sendSms(contact.phone, buildShiftMessage(shift));
-      phoneToContact.set(contact.phone, { requestId, guardId: contact.guardId });
-      contactLog.unshift({
-        id: randomUUID(),
-        guardId: contact.guardId,
-        guardName: contact.guardName,
-        phone: contact.phone,
-        shiftCode: shift.shiftCode || "",
-        method: "SMS sent",
-        note: "",
-        contactedAt: contact.sentAt,
-      });
-    } catch (err) {
-      contact.status = "failed";
-      contact.error = err.message;
-    }
-    request.contacts.push(contact);
-  }
-
   coverageRequests.set(requestId, request);
+  return request;
+}
+
+// Manual: text the provided guards immediately, all at once.
+async function createCoverageRequest(shift, guards) {
+  const request = newRequest(shift, "manual");
+  addActivity(request, `Manual outreach to ${guards.length} guard(s).`);
+  for (const guard of guards) {
+    await smsContact(request, guard, 1);
+  }
   saveState();
   return request;
+}
+
+// Agent: escalating waves of SMS, then AI voice calls to non-responders.
+async function startAgent(shift, guards) {
+  const request = newRequest(shift, "agent");
+  request.queue = [...guards];
+  addActivity(request, `AI auto-fill started for ${guards.length} eligible guard(s).`);
+  await runWave(request);
+  saveState();
+  return request;
+}
+
+async function runWave(request) {
+  if (request.status === "filled") return;
+
+  // Phase 1: SMS waves.
+  if (request.queue.length > 0) {
+    request.waveIndex += 1;
+    const batch = request.queue.splice(0, WAVE_SIZE);
+    addActivity(
+      request,
+      `Wave ${request.waveIndex}: texting ${batch.length} guard(s) (${batch
+        .map((g) => g.name || g.guardName)
+        .join(", ")}).`
+    );
+    for (const guard of batch) {
+      await smsContact(request, guard, request.waveIndex);
+    }
+    saveState();
+    request.timer = setTimeout(() => {
+      runWave(request).catch((err) => console.error("Wave error:", err));
+    }, WAVE_WAIT_MS);
+    return;
+  }
+
+  // Phase 2: voice escalation for everyone still pending (once).
+  if (!request.voiceDone) {
+    request.voiceDone = true;
+    const pending = request.contacts.filter((c) => c.status === "sent" && c.phone);
+    if (voiceConfigured() && pending.length > 0) {
+      addActivity(
+        request,
+        `No text replies yet. Escalating to AI voice calls for ${pending.length} guard(s).`
+      );
+      for (const contact of pending) {
+        await voiceCallContact(request, contact);
+      }
+      saveState();
+      request.timer = setTimeout(() => {
+        runWave(request).catch((err) => console.error("Wave error:", err));
+      }, WAVE_WAIT_MS);
+      return;
+    }
+    if (!voiceConfigured() && pending.length > 0) {
+      addActivity(request, "Voice escalation skipped (set PUBLIC_BASE_URL to enable calls).");
+    }
+  }
+
+  if (request.status !== "filled") {
+    addActivity(request, "All eligible guards contacted. Awaiting a response.");
+    saveState();
+  }
 }
 
 function publicRequestView(request) {
@@ -443,14 +735,21 @@ function publicRequestView(request) {
   return {
     id: request.id,
     status: request.status,
+    mode: request.mode || "manual",
     winnerGuardId: request.winnerGuardId,
     shift: request.shift,
     createdAt: request.createdAt,
+    waveIndex: request.waveIndex || 0,
+    pending: (request.queue || []).length,
+    activity: request.activity || [],
     contacts: request.contacts.map((c) => ({
       guardId: c.guardId,
       guardName: c.guardName,
       phone: c.phone,
       status: c.status,
+      method: c.method,
+      wave: c.wave,
+      voiceCalled: c.voiceCalled,
       error: c.error,
       sentAt: c.sentAt,
       repliedAt: c.repliedAt,
@@ -473,44 +772,21 @@ async function handleInboundSms(fromPhone, body) {
   const request = coverageRequests.get(mapping.requestId);
   if (!request) return "Thanks. That shift request is no longer active.";
 
-  const contact = request.contacts.find((c) => c.guardId === mapping.guardId);
-  if (!contact) return "Thanks for your reply.";
-
   const reply = classifyReply(body);
-  contact.repliedAt = new Date().toISOString();
 
   if (reply === "no") {
-    contact.status = "no";
-    saveState();
+    declineShift(request, mapping.guardId, "text");
     return "Thanks for letting us know. We'll find someone else.";
   }
 
   if (reply === "yes") {
-    if (request.status === "filled") {
-      contact.status = "lost";
-      saveState();
-      return "Thanks, but this shift has already been filled.";
-    }
-    request.status = "filled";
-    request.winnerGuardId = contact.guardId;
-    contact.status = "winner";
-    for (const other of request.contacts) {
-      if (other.guardId !== contact.guardId && other.status === "sent") {
-        other.status = "lost";
-        try {
-          await sendSms(other.phone, "Thanks - this shift has now been filled.");
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-    saveState();
+    const { result } = await acceptShift(request, mapping.guardId, "text");
+    if (result === "late") return "Thanks, but this shift has already been filled.";
     const s = request.shift;
     return `You're confirmed for ${s.siteName || "the shift"} on ${s.shiftDate} ${s.startTime}-${s.endTime}. See you there.`;
   }
 
-  saveState();
-  return 'Please reply YES to accept this shift or NO to pass.';
+  return "Please reply YES to accept this shift or NO to pass.";
 }
 
 async function handleApi(req, res, pathname) {
@@ -641,6 +917,7 @@ async function handleApi(req, res, pathname) {
       configured: twilioConfigured(),
       from: process.env.TWILIO_PHONE_NUMBER || "",
       webhookReady: Boolean(process.env.PUBLIC_BASE_URL),
+      voiceReady: voiceConfigured(),
     });
     return;
   }
@@ -685,6 +962,115 @@ async function handleApi(req, res, pathname) {
       return;
     }
     sendJson(res, 200, { request: publicRequestView(request) });
+    return;
+  }
+
+  // Start the autonomous multi-wave fill agent. Body: { shift, guards: [...] }
+  if (pathname === "/api/agent/start" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const shift = body.shift || {};
+    const guards = Array.isArray(body.guards) ? body.guards : [];
+    if (guards.length === 0) {
+      sendJson(res, 400, { error: "No eligible guards to contact." });
+      return;
+    }
+    if (!twilioConfigured()) {
+      sendJson(res, 400, {
+        error:
+          "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to .env, then restart.",
+      });
+      return;
+    }
+    try {
+      const request = await startAgent(shift, guards);
+      sendJson(res, 201, { request: publicRequestView(request) });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // Manually trigger a single AI voice call. Body: { requestId, guardId }
+  if (pathname === "/api/voice/call" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const request = coverageRequests.get(body.requestId);
+    if (!request) {
+      sendJson(res, 404, { error: "Coverage request not found." });
+      return;
+    }
+    if (!voiceConfigured()) {
+      sendJson(res, 400, {
+        error: "Voice calls need Twilio + a public PUBLIC_BASE_URL. Deploy or tunnel first.",
+      });
+      return;
+    }
+    const contact = request.contacts.find((c) => c.guardId === body.guardId);
+    if (!contact) {
+      sendJson(res, 404, { error: "That guard is not part of this request." });
+      return;
+    }
+    await voiceCallContact(request, contact);
+    saveState();
+    sendJson(res, 200, { request: publicRequestView(request) });
+    return;
+  }
+
+  // Twilio Voice: TwiML played when the guard answers. Keypad capture.
+  if (pathname === "/api/voice/outbound" && (req.method === "POST" || req.method === "GET")) {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const requestId = url.searchParams.get("requestId") || "";
+    const guardId = url.searchParams.get("guardId") || "";
+    const request = coverageRequests.get(requestId);
+    const prompt = request ? voicePrompt(request.shift) : "This shift is no longer available.";
+    const action = `${publicBaseUrl()}/api/voice/gather?requestId=${encodeURIComponent(
+      requestId
+    )}&guardId=${encodeURIComponent(guardId)}`;
+
+    res.writeHead(200, { "content-type": "text/xml; charset=utf-8" });
+    res.end(
+      `<?xml version="1.0" encoding="UTF-8"?>` +
+        `<Response>` +
+        `<Gather numDigits="1" timeout="8" action="${xmlEscape(action)}" method="POST">` +
+        `<Say voice="alice">${xmlEscape(prompt)}</Say>` +
+        `</Gather>` +
+        `<Say voice="alice">We did not receive a response. Goodbye.</Say>` +
+        `</Response>`
+    );
+    return;
+  }
+
+  // Twilio Voice: handles the digit the guard pressed.
+  if (pathname === "/api/voice/gather" && req.method === "POST") {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const requestId = url.searchParams.get("requestId") || "";
+    const guardId = url.searchParams.get("guardId") || "";
+    const form = await readFormBody(req);
+    const digit = String(form.Digits || "").trim();
+    const request = coverageRequests.get(requestId);
+
+    let say = "Thanks. Goodbye.";
+    if (request) {
+      if (digit === "1") {
+        const { result } = await acceptShift(request, guardId, "voice");
+        const s = request.shift;
+        say =
+          result === "late"
+            ? "Thanks, but this shift has already been filled. Goodbye."
+            : `You are confirmed for the shift on ${s.shiftDate} from ${s.startTime} to ${s.endTime}. Thank you. Goodbye.`;
+      } else if (digit === "2") {
+        declineShift(request, guardId, "voice");
+        say = "Thanks for letting us know. Goodbye.";
+      } else {
+        say = "Sorry, we did not understand that. Goodbye.";
+      }
+    }
+
+    res.writeHead(200, { "content-type": "text/xml; charset=utf-8" });
+    res.end(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">${xmlEscape(
+        say
+      )}</Say></Response>`
+    );
     return;
   }
 

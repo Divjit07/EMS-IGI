@@ -54,6 +54,7 @@ let lastResult = null;
 let activeRequestId = null;
 let pollTimer = null;
 let smsConfigured = false;
+let voiceReady = false;
 const $ = (id) => document.getElementById(id);
 
 const fields = {
@@ -214,6 +215,7 @@ function resetUpload() {
 function guardCard(guard, variant) {
   const [c1, c2] = avatarColors(guard.id);
   const busy = variant === "busy";
+  const blocked = variant === "blocked";
   const certs = (guard.certificationsList || [])
     .map((cert) => `<span class="cert">${escapeHtml(cert)}</span>`)
     .join("");
@@ -223,15 +225,31 @@ function guardCard(guard, variant) {
       ? "Distance n/a"
       : `${guard.distanceKm} km`;
 
+  const hoursTag =
+    guard.weeklyHours != null
+      ? `<span class="hoursTag">${guard.weeklyHours}h this week</span>`
+      : "";
+
   const busyNote =
     busy && guard.busyWith?.length
       ? `<div class="busyNote">On shift ${guard.busyWith[0].start_time}–${guard.busyWith[0].end_time} · ${escapeHtml(guard.busyWith[0].site_name)}</div>`
       : "";
 
+  const blockNote =
+    blocked && guard.blockReasons?.length
+      ? `<div class="blockNote">${guard.blockReasons
+          .map(
+            (r) =>
+              `<span class="blockReason"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${escapeHtml(r)}</span>`
+          )
+          .join("")}</div>`
+      : "";
+
   const isDone = contactedIds.has(guard.id);
-  const action = busy
-    ? ""
-    : `<button class="contactBtn ${isDone ? "done" : ""}" data-contact="${guard.id}" ${isDone ? "disabled" : ""}>
+  const action =
+    busy || blocked
+      ? ""
+      : `<button class="contactBtn ${isDone ? "done" : ""}" data-contact="${guard.id}" ${isDone ? "disabled" : ""}>
          ${
            isDone
              ? "Texted"
@@ -240,7 +258,7 @@ function guardCard(guard, variant) {
        </button>`;
 
   return `
-    <article class="guard">
+    <article class="guard ${blocked ? "guard--blocked" : ""}">
       <div class="guardAvatar" style="background:linear-gradient(135deg, ${c1}, ${c2});">${escapeHtml(initials(guard.name))}</div>
       <div class="guardMain">
         <div class="guardNameRow">
@@ -249,10 +267,12 @@ function guardCard(guard, variant) {
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
             ${distance}
           </span>
+          ${hoursTag}
         </div>
         <div class="guardMeta">${escapeHtml(guard.phone)}</div>
         <div class="certs">${certs}</div>
         ${busyNote}
+        ${blockNote}
       </div>
       ${action}
     </article>
@@ -276,16 +296,18 @@ function renderResults(result) {
     ${escapeHtml(s.shiftDate)} · ${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)} · within ${escapeHtml(String(s.radiusKm))} km
   `;
 
+  const blockedList = result.blocked || [];
   $("kpiRow").innerHTML = [
     kpi(result.counts.available, "Available", "green"),
     kpi(result.counts.busy, "On shift", "red"),
+    kpi(result.counts.blocked ?? blockedList.length, "Blocked", "slate"),
     kpi(result.counts.outOfRadius, "Out of range", "amber"),
-    kpi(result.counts.totalActive, "Active roster", "slate"),
   ].join("");
 
   $("availableCount").textContent = result.counts.available;
   $("busyCount").textContent = result.counts.busy;
   $("outCount").textContent = result.counts.outOfRadius;
+  $("blockedCount").textContent = blockedList.length;
 
   $("availableList").innerHTML = result.available.length
     ? result.available.map((g) => guardCard(g, "available")).join("")
@@ -295,12 +317,15 @@ function renderResults(result) {
   $("outList").innerHTML = (result.availableOutOfRadius || [])
     .map((g) => guardCard(g, "out"))
     .join("");
+  $("blockedList").innerHTML = blockedList.map((g) => guardCard(g, "blocked")).join("");
 
   $("busyBlock").classList.toggle("hidden", result.busy.length === 0);
   $("outOfRangeBlock").classList.toggle("hidden", (result.availableOutOfRadius || []).length === 0);
+  $("blockedBlock").classList.toggle("hidden", blockedList.length === 0);
 
-  const contactAllBtn = $("contactAllBtn");
-  contactAllBtn.disabled = result.available.length === 0;
+  const noneAvailable = result.available.length === 0;
+  $("contactAllBtn").disabled = noneAvailable;
+  $("agentBtn").disabled = noneAvailable;
 
   bindContactButtons(result);
 }
@@ -392,41 +417,117 @@ function smsContactRow(contact) {
     lost: "filled by other",
     failed: contact.error || "failed",
   };
+  const channel =
+    contact.method === "voice" || contact.voiceCalled ? "📞 voice" : "✉ text";
+  const wave = contact.wave ? ` · wave ${contact.wave}` : "";
+  const callBtn =
+    voiceReady && contact.status === "sent"
+      ? `<button class="miniCallBtn" data-call="${contact.guardId}" title="Call this guard now">📞</button>`
+      : "";
   return `
     <div class="smsContactRow">
       <div class="logAvatar" style="width:28px;height:28px;font-size:11px;background:linear-gradient(135deg, ${c1}, ${c2}); color:#fff;">${escapeHtml(initials(contact.guardName))}</div>
       <span class="smsContactName">${escapeHtml(contact.guardName)}</span>
-      <span class="smsContactPhone">${escapeHtml(contact.phone)}</span>
+      <span class="smsContactChannel">${channel}${wave}</span>
       <span class="smsPill smsPill--${contact.status}">${escapeHtml(labels[contact.status] || contact.status)}</span>
+      ${callBtn}
     </div>
   `;
+}
+
+function activityRow(item) {
+  const time = new Date(item.at).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return `<div class="activityRow"><span class="activityTime">${time}</span><span>${escapeHtml(item.text)}</span></div>`;
 }
 
 function renderSmsStatus(reqView) {
   const el = $("smsStatus");
   el.classList.remove("hidden");
   const filled = reqView.status === "filled";
+  const isAgent = reqView.mode === "agent";
   const winner = filled
     ? reqView.contacts.find((c) => c.guardId === reqView.winnerGuardId)
     : null;
 
+  const title = isAgent ? "AI auto-fill agent" : "SMS coverage request";
+  const badge = filled
+    ? "Filled"
+    : isAgent
+      ? `Working${reqView.waveIndex ? ` · wave ${reqView.waveIndex}` : ""}`
+      : "Awaiting replies";
+
+  const activity =
+    isAgent && reqView.activity?.length
+      ? `<div class="activityFeed">${reqView.activity.map(activityRow).join("")}</div>`
+      : "";
+
   el.innerHTML = `
     <div class="smsStatusHead">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
-      <h4>SMS coverage request</h4>
-      <span class="smsBadge smsBadge--${filled ? "filled" : "open"}">${filled ? "Filled" : "Awaiting replies"}</span>
+      <h4>${escapeHtml(title)}</h4>
+      <span class="smsBadge smsBadge--${filled ? "filled" : "open"}">${escapeHtml(badge)}</span>
     </div>
     ${reqView.contacts.map(smsContactRow).join("")}
+    ${activity}
     ${
       winner
         ? `<p class="smsHint">✅ <strong>${escapeHtml(winner.guardName)}</strong> accepted first and is confirmed for the shift.</p>`
-        : `<p class="smsHint">Guards reply YES/NO by text. First YES wins. ${
-            smsConfigured
-              ? "Replies update here automatically when the inbound webhook is connected."
-              : ""
+        : `<p class="smsHint">First YES wins (text or voice). ${
+            isAgent
+              ? "The agent escalates in waves, then calls non-responders."
+              : "Replies update here automatically."
           }</p>`
     }
   `;
+
+  el.querySelectorAll("[data-call]").forEach((btn) => {
+    btn.addEventListener("click", () => voiceCallGuard(btn.dataset.call));
+  });
+}
+
+async function voiceCallGuard(guardId) {
+  if (!activeRequestId) return;
+  try {
+    const data = await request("/api/voice/call", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ requestId: activeRequestId, guardId }),
+    });
+    renderSmsStatus(data.request);
+    toast("Calling guard now…", false);
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function startAgentFill(guards) {
+  clearToast();
+  if (!guards || guards.length === 0) return;
+  try {
+    const data = await request("/api/agent/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        shift: currentShift,
+        guards: guards.map(guardForSms),
+      }),
+    });
+    activeRequestId = data.request.id;
+    guards.forEach((g) => contactedIds.add(g.id));
+    if (lastResult) renderResults(lastResult);
+    renderSmsStatus(data.request);
+    startPolling();
+    toast("AI auto-fill started.", false);
+    const log = await request("/api/contact-log");
+    renderLog(log.entries || []);
+  } catch (err) {
+    toast(err.message);
+    if (lastResult) renderResults(lastResult);
+  }
 }
 
 function startPolling() {
@@ -556,6 +657,14 @@ async function init() {
     btn.disabled = false;
   });
 
+  $("agentBtn").addEventListener("click", async () => {
+    if (!lastResult || lastResult.available.length === 0) return;
+    const btn = $("agentBtn");
+    btn.disabled = true;
+    await startAgentFill(lastResult.available);
+    btn.disabled = false;
+  });
+
   try {
     const [log, guards, schedule, sms] = await Promise.all([
       request("/api/contact-log"),
@@ -567,6 +676,7 @@ async function init() {
     $("rosterCount").textContent = (guards.guards || []).filter((g) => g.status === "active").length;
     $("shiftCount").textContent = (schedule.shifts || []).length;
     smsConfigured = Boolean(sms.configured);
+    voiceReady = Boolean(sms.voiceReady);
   } catch (err) {
     toast(err.message);
   }

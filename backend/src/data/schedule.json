@@ -68,5 +68,55 @@
     "site_name": "Square One",
     "site_address": "100 City Centre Dr, Mississauga, ON",
     "shift_code": "SqOne 235 (TT)"
+  },
+  {
+    "guard_id": "G011",
+    "guard_name": "Nadia Hassan",
+    "shift_date": "2026-06-01",
+    "start_time": "07:00",
+    "end_time": "15:00",
+    "site_name": "Dundas Square",
+    "site_address": "1 Dundas St E, Toronto, ON",
+    "shift_code": "Dundas 401 (TT)"
+  },
+  {
+    "guard_id": "G011",
+    "guard_name": "Nadia Hassan",
+    "shift_date": "2026-06-02",
+    "start_time": "07:00",
+    "end_time": "15:00",
+    "site_name": "Dundas Square",
+    "site_address": "1 Dundas St E, Toronto, ON",
+    "shift_code": "Dundas 401 (TT)"
+  },
+  {
+    "guard_id": "G011",
+    "guard_name": "Nadia Hassan",
+    "shift_date": "2026-06-04",
+    "start_time": "07:00",
+    "end_time": "15:00",
+    "site_name": "Dundas Square",
+    "site_address": "1 Dundas St E, Toronto, ON",
+    "shift_code": "Dundas 401 (TT)"
+  },
+  {
+    "guard_id": "G011",
+    "guard_name": "Nadia Hassan",
+    "shift_date": "2026-06-05",
+    "start_time": "07:00",
+    "end_time": "15:00",
+    "site_name": "Dundas Square",
+    "site_address": "1 Dundas St E, Toronto, ON",
+    "shift_code": "Dundas 401 (TT)"
+  },
+  {
+    "guard_id": "G011",
+    "guard_name": "Nadia Hassan",
+    "shift_date": "2026-06-06",
+    "start_time": "07:00",
+    "end_time": "15:00",
+    "site_name": "Dundas Square",
+    "site_address": "1 Dundas St E, Toronto, ON",
+    "shift_code": "Dundas 401 (TT)"
   }
 ]

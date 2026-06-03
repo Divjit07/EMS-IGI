@@ -18,6 +18,9 @@ The current build is intentionally **zero-install** because this machine has Nod
 - Manual contact logging
 - Twilio SMS for texting one guard or all available guards
 - First `YES` reply wins, with live status updates in the UI
+- AI auto-fill agent: escalating SMS waves, then AI voice calls to non-responders
+- Twilio Voice calls (press 1 to accept / 2 to decline) for emergency escalation
+- Compliance guardrails: blocks guards over 44h/week or with an expired license
 - JSON runtime state persistence for contact logs and SMS coverage requests
 - Polished browser UI for demoing to management
 
@@ -85,6 +88,29 @@ For local testing, expose the app with a tunnel and set Twilio's inbound webhook
 ```
 
 For deployment, use the Render URL instead.
+
+### AI auto-fill agent
+
+Clicking **Start AI auto-fill** runs an autonomous fill loop:
+
+1. Wave 1 texts the top 3 eligible guards.
+2. After ~45 seconds with no `YES`, the next wave of 3 is texted.
+3. When SMS waves are exhausted, the agent escalates to AI **voice calls**
+   (press 1 to accept) for guards who never replied.
+4. The first guard to accept by text or voice wins; everyone else is notified
+   the shift is filled.
+
+Voice escalation requires `PUBLIC_BASE_URL` to be set to a public HTTPS URL
+(Render or a tunnel) so Twilio can reach the call instructions.
+
+### Compliance guardrails
+
+Before contacting anyone, the tool removes guards who would break the rules and
+shows the reason instead:
+
+- Already on an overlapping shift.
+- Would exceed 44 hours in the shift's week (overtime).
+- Security license expired before the shift date.
 
 ## Deploying to Render for a demo
 

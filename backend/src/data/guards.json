@@ -9,6 +9,7 @@
     "lat": 43.6453,
     "lng": -79.3806,
     "certifications": "Security Guard, First Aid, CPR",
+    "license_expiry": "2027-08-31",
     "status": "active"
   },
   {
@@ -21,6 +22,7 @@
     "lat": 43.6708,
     "lng": -79.3857,
     "certifications": "Security Guard, First Aid",
+    "license_expiry": "2026-05-15",
     "status": "active"
   },
   {
@@ -33,6 +35,7 @@
     "lat": 43.7062,
     "lng": -79.3982,
     "certifications": "Security Guard, CPR, Crowd Control",
+    "license_expiry": "2027-03-31",
     "status": "active"
   },
   {
@@ -45,6 +48,7 @@
     "lat": 43.5931,
     "lng": -79.6425,
     "certifications": "Security Guard, First Aid, CPR, Use of Force",
+    "license_expiry": "2027-01-31",
     "status": "active"
   },
   {
@@ -57,6 +61,7 @@
     "lat": 43.7755,
     "lng": -79.2576,
     "certifications": "Security Guard",
+    "license_expiry": "2026-12-31",
     "status": "active"
   },
   {
@@ -69,6 +74,7 @@
     "lat": 43.6205,
     "lng": -79.5563,
     "certifications": "Security Guard, First Aid",
+    "license_expiry": "2027-06-30",
     "status": "active"
   },
   {
@@ -81,6 +87,7 @@
     "lat": 43.6561,
     "lng": -79.3802,
     "certifications": "Security Guard, CPR",
+    "license_expiry": "2027-02-28",
     "status": "active"
   },
   {
@@ -93,6 +100,7 @@
     "lat": 43.6452,
     "lng": -79.5667,
     "certifications": "Security Guard, First Aid, CPR",
+    "license_expiry": "2027-09-30",
     "status": "active"
   },
   {
@@ -105,6 +113,7 @@
     "lat": 43.7256,
     "lng": -79.4524,
     "certifications": "Security Guard, Crowd Control",
+    "license_expiry": "2027-04-30",
     "status": "active"
   },
   {
@@ -117,6 +126,7 @@
     "lat": 43.6385,
     "lng": -79.3956,
     "certifications": "Security Guard",
+    "license_expiry": "2026-11-30",
     "status": "inactive"
   },
   {
@@ -129,6 +139,7 @@
     "lat": 43.6563,
     "lng": -79.3796,
     "certifications": "Security Guard, First Aid, CPR",
+    "license_expiry": "2027-07-31",
     "status": "active"
   },
   {
@@ -141,6 +152,7 @@
     "lat": 43.7735,
     "lng": -79.5019,
     "certifications": "Security Guard, Use of Force",
+    "license_expiry": "2027-05-31",
     "status": "active"
   }
 ]
