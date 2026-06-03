@@ -444,6 +444,9 @@ function renderLog(entries = []) {
   target.innerHTML = entries
     .map((entry) => {
       const [c1, c2] = avatarColors(entry.guardId);
+      const method = entry.method || "contacted";
+      const tagClass =
+        /accept/i.test(method) ? "logTag logTag--win" : /fail/i.test(method) ? "logTag logTag--fail" : "logTag";
       return `
         <div class="logEntry">
           <div class="logAvatar" style="background:linear-gradient(135deg, ${c1}, ${c2}); color:#fff;">${escapeHtml(initials(entry.guardName))}</div>
@@ -451,11 +454,32 @@ function renderLog(entries = []) {
             <strong>${escapeHtml(entry.guardName)}</strong>
             <span>${escapeHtml(entry.phone || "")} · ${new Date(entry.contactedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
           </div>
-          <span class="logTag">${escapeHtml(entry.method || "contacted")}</span>
+          <span class="${tagClass}">${escapeHtml(method)}</span>
         </div>
       `;
     })
     .join("");
+}
+
+async function refreshActivity() {
+  const btn = $("refreshActivityBtn");
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add("refreshBtn--spinning");
+  try {
+    const log = await request("/api/contact-log");
+    renderLog(log.entries || []);
+    if (activeRequestId) {
+      const data = await request(`/api/sms/request?id=${encodeURIComponent(activeRequestId)}`);
+      renderSmsStatus(data.request);
+    }
+    toast(`Activity updated (${(log.entries || []).length} entries).`, false);
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("refreshBtn--spinning");
+  }
 }
 
 async function contactGuard(guard, button) {
@@ -757,6 +781,8 @@ async function init() {
   });
 
   $("findBtn").addEventListener("click", findCoverage);
+
+  $("refreshActivityBtn").addEventListener("click", refreshActivity);
 
   $("contactAllBtn").addEventListener("click", async () => {
     if (!lastResult || lastResult.available.length === 0) return;

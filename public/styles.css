@@ -397,6 +397,57 @@ select {
   color: var(--slate-500);
 }
 
+.panelHead--withAction {
+  align-items: center;
+}
+
+.panelHead--withAction .panelHeadText {
+  flex: 1;
+  min-width: 0;
+}
+
+.refreshBtn {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--slate-700);
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.refreshBtn:hover {
+  background: var(--slate-100);
+  border-color: var(--slate-300);
+  color: var(--ink);
+}
+
+.refreshBtn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.refreshBtn--spinning .refreshIcon {
+  animation: spin 0.7s linear infinite;
+}
+
+.logTag--win {
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.logTag--fail {
+  color: var(--red);
+  background: var(--red-bg);
+}
+
 /* ============ DROPZONE ============ */
 .dropzone {
   display: block;
