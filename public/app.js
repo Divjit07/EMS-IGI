@@ -2,31 +2,65 @@ const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 const sites = {
-  union: {
-    siteName: "Union Station",
-    siteAddress: "65 Front St W, Toronto, ON",
-    siteLat: 43.6453,
-    siteLng: -79.3806,
+  metro: {
+    clientCategory: "METRO",
+    siteName: "Metro — coverage site",
+    siteAddress: "875 Don Mills Rd, North York, ON M3C 1V1",
+    siteLat: 43.7255,
+    siteLng: -79.3342,
+    shiftCode: "Metro LP (TT)",
+    lpType: "LP",
   },
-  eaton: {
-    siteName: "Eaton Centre",
-    siteAddress: "220 Yonge St, Toronto, ON",
-    siteLat: 43.6544,
-    siteLng: -79.3807,
+  "food-basic": {
+    clientCategory: "FOOD BASIC",
+    siteName: "Food Basics 841 — LP Dundas",
+    siteAddress: "478 Dundas St W, Oakville, ON L6H 6Y3",
+    siteLat: 43.4472,
+    siteLng: -79.6931,
+    shiftCode: "Food Basic 841 (LP)",
+    lpType: "LP",
   },
-  "square-one": {
-    siteName: "Square One",
-    siteAddress: "100 City Centre Dr, Mississauga, ON",
+  "canadian-tire": {
+    clientCategory: "CANADIAN TIRE",
+    siteName: "Canadian Tire — coverage site",
+    siteAddress: "799 Bay St, Toronto, ON M5G 2C7",
+    siteLat: 43.6605,
+    siteLng: -79.3842,
+    shiftCode: "Canadian Tire LP (TT)",
+    lpType: "LP",
+  },
+  "party-city": {
+    clientCategory: "PARTY CITY",
+    siteName: "Party City — coverage site",
+    siteAddress: "100 City Centre Dr, Mississauga, ON L5B 2C9",
     siteLat: 43.5931,
     siteLng: -79.6425,
+    shiftCode: "Party City LP (TT)",
+    lpType: "LP",
   },
-  yorkdale: {
-    siteName: "Yorkdale Mall",
-    siteAddress: "3401 Dufferin St, North York, ON",
-    siteLat: 43.7256,
-    siteLng: -79.4524,
+  warehouse: {
+    clientCategory: "WAREHOUSE",
+    siteName: "Warehouse — coverage site",
+    siteAddress: "6899 Airport Rd, Mississauga, ON L4V 1T2",
+    siteLat: 43.6978,
+    siteLng: -79.6474,
+    shiftCode: "Warehouse (TT)",
+    lpType: "LPD",
+  },
+  "parking-enforcement": {
+    clientCategory: "PARKING ENFORCEMENT",
+    siteName: "Parking Enforcement — coverage site",
+    siteAddress: "55 John St, Toronto, ON M5V 3C6",
+    siteLat: 43.6469,
+    siteLng: -79.3893,
+    shiftCode: "Parking Enforcement (TT)",
+    lpType: "LPD",
   },
 };
+
+const clientCategoryToSiteKey = Object.fromEntries(
+  Object.entries(sites).map(([key, site]) => [site.clientCategory.toUpperCase(), key])
+);
 
 const avatarPalette = [
   ["#8a2b2e", "#732226"],
@@ -41,11 +75,13 @@ let currentShift = {
   shiftDate: "2026-06-03",
   startTime: "15:00",
   endTime: "23:00",
-  siteName: "Union Station",
-  siteAddress: "65 Front St W, Toronto, ON",
-  siteLat: 43.6453,
-  siteLng: -79.3806,
-  shiftCode: "Metro 235 (TT)",
+  siteName: "Food Basics 841 — LP Dundas",
+  siteAddress: "478 Dundas St W, Oakville, ON L6H 6Y3",
+  siteLat: 43.4472,
+  siteLng: -79.6931,
+  shiftCode: "Food Basic 841 (LP)",
+  clientCategory: "FOOD BASIC",
+  lpType: "LP",
   radiusKm: 10,
 };
 
@@ -122,6 +158,56 @@ function escapeHtml(value) {
 }
 
 /* ---------- form sync ---------- */
+function syncLpTypeUI() {
+  document.querySelectorAll('input[name="lpTypeToggle"]').forEach((cb) => {
+    cb.checked = cb.value === currentShift.lpType;
+    cb.closest(".lpTypeChoice")?.classList.toggle("active", cb.checked);
+  });
+}
+
+function syncKnownSiteSelect() {
+  const select = $("knownSite");
+  if (!select) return;
+  const category = String(currentShift.clientCategory || "").toUpperCase();
+  const key = clientCategoryToSiteKey[category] || "";
+  select.value = key;
+}
+
+function normalizeParsedShift(parsed) {
+  const out = { ...parsed };
+  const rawLp = String(out.lpType || "").trim().toUpperCase();
+  if (rawLp === "LP" || rawLp === "LPD") {
+    out.lpType = rawLp;
+  } else if (/\bLPD\b/i.test(out.shiftCode || "")) {
+    out.lpType = "LPD";
+  } else if (/\bLP\b/i.test(out.shiftCode || "")) {
+    out.lpType = "LP";
+  } else {
+    out.lpType = currentShift.lpType || "";
+  }
+
+  const category = String(out.clientCategory || "").trim().toUpperCase();
+  if (category) {
+    out.clientCategory = category;
+    const siteKey = clientCategoryToSiteKey[category];
+    if (siteKey && (out.siteLat == null || out.siteLng == null)) {
+      Object.assign(out, sites[siteKey]);
+    }
+  } else {
+    const name = String(out.siteName || "").toLowerCase();
+    for (const [key, site] of Object.entries(sites)) {
+      if (name.includes(site.clientCategory.toLowerCase().split(" ")[0])) {
+        out.clientCategory = site.clientCategory;
+        if (out.siteLat == null) out.siteLat = site.siteLat;
+        if (out.siteLng == null) out.siteLng = site.siteLng;
+        if (!out.lpType) out.lpType = site.lpType;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 function populateForm() {
   for (const [key, input] of Object.entries(fields)) {
     input.value = currentShift[key] ?? "";
@@ -129,9 +215,12 @@ function populateForm() {
   document.querySelectorAll("#radiusGroup button").forEach((btn) => {
     btn.classList.toggle("active", Number(btn.dataset.radius) === Number(currentShift.radiusKm));
   });
+  syncLpTypeUI();
+  syncKnownSiteSelect();
 }
 
 function readForm() {
+  readLpTypeFromUI();
   currentShift = {
     ...currentShift,
     shiftDate: fields.shiftDate.value,
@@ -141,6 +230,11 @@ function readForm() {
     siteAddress: fields.siteAddress.value,
     shiftCode: fields.shiftCode.value,
   };
+}
+
+function readLpTypeFromUI() {
+  const checked = document.querySelector('input[name="lpTypeToggle"]:checked');
+  currentShift.lpType = checked ? checked.value : "";
 }
 
 /* ---------- upload ---------- */
@@ -190,7 +284,7 @@ async function handleFile(file) {
       }),
     });
     if (data.parsedShift) {
-      currentShift = { ...currentShift, ...data.parsedShift };
+      currentShift = { ...currentShift, ...normalizeParsedShift(data.parsedShift) };
       populateForm();
     }
     const notice = $("parseNotice");
@@ -293,7 +387,8 @@ function renderResults(result) {
   $("shiftSummary").classList.remove("hidden");
   $("shiftSummary").innerHTML = `
     <strong>${escapeHtml(s.siteName || "Shift")}</strong><br />
-    ${escapeHtml(s.shiftDate)} · ${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)} · within ${escapeHtml(String(s.radiusKm))} km
+    ${escapeHtml(s.shiftDate)} · ${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)}${s.lpType ? ` · ${escapeHtml(s.lpType)}` : ""}<br />
+    within ${escapeHtml(String(s.radiusKm))} km
   `;
 
   const blockedList = result.blocked || [];
@@ -608,6 +703,20 @@ async function init() {
     if (!site) return;
     currentShift = { ...currentShift, ...site };
     populateForm();
+  });
+
+  document.querySelectorAll('input[name="lpTypeToggle"]').forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        document.querySelectorAll('input[name="lpTypeToggle"]').forEach((other) => {
+          if (other !== cb) other.checked = false;
+        });
+        currentShift.lpType = cb.value;
+      } else {
+        currentShift.lpType = "";
+      }
+      syncLpTypeUI();
+    });
   });
 
   document.querySelectorAll("#radiusGroup button").forEach((btn) => {

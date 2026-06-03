@@ -87,11 +87,13 @@ const demoParsedShift = {
   shiftDate: "2026-06-03",
   startTime: "15:00",
   endTime: "23:00",
-  siteName: "Union Station",
-  siteAddress: "65 Front St W, Toronto, ON",
-  siteLat: 43.6453,
-  siteLng: -79.3806,
-  shiftCode: "Metro 235 (TT)",
+  siteName: "Food Basics 841 — LP Dundas",
+  siteAddress: "478 Dundas St W, Oakville, ON L6H 6Y3",
+  siteLat: 43.4472,
+  siteLng: -79.6931,
+  shiftCode: "Food Basic 841 (LP)",
+  clientCategory: "FOOD BASIC",
+  lpType: "LP",
   confidence: "demo",
 };
 
@@ -192,7 +194,10 @@ async function parseWithGemini(base64, mediaType) {
                 "You are reading a security shift coverage notice (often a chat screenshot). " +
                 "Extract the shift details and return ONLY valid JSON (no markdown, no prose) " +
                 "with these keys: shiftDate (YYYY-MM-DD), startTime (HH:MM 24h), endTime (HH:MM 24h), " +
-                "siteName, siteAddress, shiftCode, notes. Use an empty string for anything not visible.",
+                "siteName, siteAddress, shiftCode, clientCategory (one of: METRO, FOOD BASIC, CANADIAN TIRE, " +
+                "PARTY CITY, WAREHOUSE, PARKING ENFORCEMENT, or empty if unclear), " +
+                "lpType (LP or LPD if the shift is loss-prevention; infer from shift code or site name when visible), " +
+                "notes. Use an empty string for anything not visible.",
             },
           ],
         },
@@ -411,14 +416,34 @@ function twilioConfigured() {
   );
 }
 
+function normalizeParsedFields(parsed) {
+  const out = { ...parsed };
+  const rawLp = String(out.lpType || "").trim().toUpperCase();
+  if (rawLp === "LP" || rawLp === "LPD") {
+    out.lpType = rawLp;
+  } else if (/\bLPD\b/i.test(out.shiftCode || "")) {
+    out.lpType = "LPD";
+  } else if (/\bLP\b/i.test(out.shiftCode || "")) {
+    out.lpType = "LP";
+  } else {
+    out.lpType = "";
+  }
+  if (out.clientCategory) {
+    out.clientCategory = String(out.clientCategory).trim().toUpperCase();
+  }
+  return out;
+}
+
 function buildShiftMessage(shift) {
   const date = shift.shiftDate || "";
   const time = `${shift.startTime || ""}-${shift.endTime || ""}`;
   const site = shift.siteName || shift.siteAddress || "the site";
   const code = shift.shiftCode ? ` (${shift.shiftCode})` : "";
+  const role = shift.lpType ? `Role: ${shift.lpType}\n` : "";
   return (
     `The Investigators Group - shift coverage needed:\n` +
     `${date} ${time}\n` +
+    `${role}` +
     `${site}${code}\n` +
     `Reply YES to accept or NO to pass.`
   );
@@ -535,9 +560,10 @@ function voicePrompt(shift) {
   const date = shift.shiftDate || "";
   const time = `${shift.startTime || ""} to ${shift.endTime || ""}`;
   const site = shift.siteName || shift.siteAddress || "a client site";
+  const role = shift.lpType ? `${shift.lpType} ` : "";
   return (
     `Hello, this is The Investigators Group with an urgent shift coverage request. ` +
-    `We need a guard at ${site} on ${date}, from ${time}. ` +
+    `We need a ${role}guard at ${site} on ${date}, from ${time}. ` +
     `To accept this shift, press 1. To decline, press 2.`
   );
 }
@@ -841,7 +867,7 @@ async function handleApi(req, res, pathname) {
     }
 
     if (base64) {
-      const parsed = await parseWithGemini(base64, mediaType);
+      const parsed = normalizeParsedFields(await parseWithGemini(base64, mediaType));
       if (parsed) {
         const coords = await geocodeAddress(parsed.siteAddress);
         sendJson(res, 200, {

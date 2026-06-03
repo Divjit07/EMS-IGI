@@ -88,6 +88,13 @@ select {
   display: none !important;
 }
 
+/* Accessible keyboard focus across all interactive elements */
+:where(button, a, input, select, summary):focus-visible {
+  outline: 2px solid var(--burgundy);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 .appShell {
   width: min(1320px, 100%);
   margin: 0 auto;
@@ -249,7 +256,9 @@ select {
   align-items: flex-end;
   justify-content: space-between;
   gap: 28px;
-  margin: 30px 4px 22px;
+  margin: 30px 4px 24px;
+  padding-bottom: 22px;
+  border-bottom: var(--border);
 }
 
 .eyebrow {
@@ -353,9 +362,9 @@ select {
 
 .stepBadge {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   background: var(--burgundy);
   color: var(--white);
   display: grid;
@@ -363,6 +372,7 @@ select {
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 14px;
+  box-shadow: 0 0 0 4px var(--burgundy-50);
 }
 
 .panelHeadIcon {
@@ -589,6 +599,73 @@ select {
   color: var(--slate-400);
 }
 
+/* LP / LPD assignment type */
+.lpTypeChoices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lpTypeChoice {
+  position: relative;
+  cursor: pointer;
+}
+
+.lpTypeChoice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lpTypeBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 12px;
+  border: 1.5px solid var(--slate-300);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--slate-600);
+  transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.lpTypeBox svg {
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.lpTypeChoice small {
+  display: block;
+  margin-top: 6px;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--slate-500);
+}
+
+.lpTypeChoice:hover .lpTypeBox {
+  border-color: var(--burgundy-600);
+}
+
+.lpTypeChoice.active .lpTypeBox,
+.lpTypeChoice input:checked + .lpTypeBox {
+  border-color: var(--burgundy);
+  background: var(--burgundy-50);
+  color: var(--burgundy);
+  box-shadow: var(--ring);
+}
+
+.lpTypeChoice.active .lpTypeBox svg,
+.lpTypeChoice input:checked + .lpTypeBox svg {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .primaryBtn {
   width: 100%;
   margin-top: 20px;
@@ -712,6 +789,8 @@ select {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: var(--border);
 }
 
 .resultsHead h3 {
@@ -724,6 +803,10 @@ select {
   font-size: 13px;
   color: var(--slate-600);
   line-height: 1.5;
+  background: var(--slate-100);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
 }
 
 .shiftSummary strong {
@@ -738,34 +821,36 @@ select {
 }
 
 .kpi {
-  padding: 14px;
+  padding: 13px 14px;
   border-radius: var(--radius-md);
   border: var(--border);
+  border-top-width: 3px;
 }
 
 .kpi b {
   display: block;
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 26px;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi span {
   display: block;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.kpi--green { background: var(--green-bg); border-color: transparent; }
+.kpi--green { background: var(--green-bg); border-color: transparent; border-top-color: var(--green); }
 .kpi--green b, .kpi--green span { color: var(--green); }
-.kpi--red { background: var(--red-bg); border-color: transparent; }
+.kpi--red { background: var(--red-bg); border-color: transparent; border-top-color: var(--red); }
 .kpi--red b, .kpi--red span { color: var(--red); }
-.kpi--amber { background: var(--amber-bg); border-color: transparent; }
+.kpi--amber { background: var(--amber-bg); border-color: transparent; border-top-color: var(--amber); }
 .kpi--amber b, .kpi--amber span { color: var(--amber); }
-.kpi--slate { background: var(--slate-100); border-color: transparent; }
+.kpi--slate { background: var(--slate-100); border-color: transparent; border-top-color: var(--slate-400); }
 .kpi--slate b, .kpi--slate span { color: var(--slate-700); }
 
 /* ============ EMPTY STATE ============ */
@@ -801,10 +886,15 @@ select {
 }
 
 /* ============ ROSTER ============ */
+.rosterBlock {
+  padding: 15px 16px;
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+
 .rosterBlock + .rosterBlock {
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: var(--border);
+  margin-top: 12px;
 }
 
 .rosterTitle {
@@ -879,7 +969,14 @@ details[open] .chev {
 .guard:hover {
   border-color: var(--slate-300);
   box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
+
+/* Color-coded left accent so each result group reads at a glance */
+#availableList .guard { border-left: 3px solid var(--green); }
+#busyList .guard { border-left: 3px solid var(--red); }
+#outList .guard { border-left: 3px solid var(--amber); }
+#blockedList .guard { border-left: 3px solid var(--slate-400); }
 
 .guardAvatar {
   width: 44px;

@@ -151,15 +151,39 @@
                 <input id="siteAddress" placeholder="65 Front St W, Toronto, ON" />
               </label>
               <label class="field field--full">
-                <span>Quick-fill known site</span>
+                <span>Quick-fill client / site</span>
                 <select id="knownSite">
-                  <option value="">Select a site…</option>
-                  <option value="union">Union Station</option>
-                  <option value="eaton">Eaton Centre</option>
-                  <option value="square-one">Square One</option>
-                  <option value="yorkdale">Yorkdale Mall</option>
+                  <option value="">Select a client…</option>
+                  <option value="metro">Metro</option>
+                  <option value="food-basic">Food Basics</option>
+                  <option value="canadian-tire">Canadian Tire</option>
+                  <option value="party-city">Party City</option>
+                  <option value="warehouse">Warehouse</option>
+                  <option value="parking-enforcement">Parking Enforcement</option>
                 </select>
               </label>
+
+              <div class="field field--full">
+                <span>Assignment type</span>
+                <div class="lpTypeChoices" id="lpTypeChoices">
+                  <label class="lpTypeChoice">
+                    <input type="checkbox" name="lpTypeToggle" value="LP" />
+                    <span class="lpTypeBox">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      LP
+                    </span>
+                    <small>Loss Prevention</small>
+                  </label>
+                  <label class="lpTypeChoice">
+                    <input type="checkbox" name="lpTypeToggle" value="LPD" />
+                    <span class="lpTypeBox">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      LPD
+                    </span>
+                    <small>Loss Prevention Det.</small>
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div class="radiusRow">
