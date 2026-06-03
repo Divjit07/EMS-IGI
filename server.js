@@ -571,20 +571,47 @@ function voicePrompt(shift) {
   );
 }
 
-// Place an outbound voice call; Twilio fetches TwiML from our /api/voice/outbound.
-async function placeCall(to, requestId, guardId) {
+function buildVoiceGatherTwiml(requestId, guardId, shift) {
+  const action = `${publicBaseUrl()}/api/voice/gather?requestId=${encodeURIComponent(
+    requestId
+  )}&guardId=${encodeURIComponent(guardId)}`;
+  const prompt = shift ? voicePrompt(shift) : "This shift is no longer available.";
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    `<Gather numDigits="1" timeout="20" action="${xmlEscape(action)}" method="POST">` +
+    `<Say voice="alice">${xmlEscape(prompt)}</Say>` +
+    `</Gather>` +
+    `<Say voice="alice">We did not receive a response. Goodbye.</Say>` +
+    `</Response>`
+  );
+}
+
+async function wakePublicServer() {
+  const base = publicBaseUrl();
+  if (!base) return;
+  try {
+    // Render free tier can take ~50s to wake; Twilio needs our server for press-1.
+    await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(90000) });
+  } catch {
+    /* best effort */
+  }
+}
+
+// Place an outbound voice call using inline TwiML (avoids Twilio URL fetch on cold start).
+async function placeCall(to, requestId, guardId, shift) {
   if (!voiceConfigured()) {
     throw new Error("Voice not configured (needs Twilio + PUBLIC_BASE_URL).");
   }
+  await wakePublicServer();
+
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_PHONE_NUMBER;
   const auth = Buffer.from(`${sid}:${token}`).toString("base64");
-  const twimlUrl = `${publicBaseUrl()}/api/voice/outbound?requestId=${encodeURIComponent(
-    requestId
-  )}&guardId=${encodeURIComponent(guardId)}`;
+  const twiml = buildVoiceGatherTwiml(requestId, guardId, shift);
 
-  const form = new URLSearchParams({ To: to, From: from, Url: twimlUrl, Method: "POST" });
+  const form = new URLSearchParams({ To: to, From: from, Twiml: twiml });
   const resp = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`,
     {
@@ -606,7 +633,7 @@ async function placeCall(to, requestId, guardId) {
 async function voiceCallContact(request, contact) {
   if (!contact.phone) return;
   try {
-    await placeCall(contact.phone, request.id, contact.guardId);
+    await placeCall(contact.phone, request.id, contact.guardId, request.shift);
     contact.voiceCalled = true;
     addActivity(request, `Calling ${contact.guardName} (AI voice)...`);
     logContact(contact, request.shift, "Voice call");
@@ -1044,27 +1071,16 @@ async function handleApi(req, res, pathname) {
     return;
   }
 
-  // Twilio Voice: TwiML played when the guard answers. Keypad capture.
+  // Twilio Voice: TwiML fallback if fetched by URL (legacy / debugging).
   if (pathname === "/api/voice/outbound" && (req.method === "POST" || req.method === "GET")) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const requestId = url.searchParams.get("requestId") || "";
     const guardId = url.searchParams.get("guardId") || "";
     const request = coverageRequests.get(requestId);
-    const prompt = request ? voicePrompt(request.shift) : "This shift is no longer available.";
-    const action = `${publicBaseUrl()}/api/voice/gather?requestId=${encodeURIComponent(
-      requestId
-    )}&guardId=${encodeURIComponent(guardId)}`;
+    const shift = request?.shift || null;
 
     res.writeHead(200, { "content-type": "text/xml; charset=utf-8" });
-    res.end(
-      `<?xml version="1.0" encoding="UTF-8"?>` +
-        `<Response>` +
-        `<Gather numDigits="1" timeout="8" action="${xmlEscape(action)}" method="POST">` +
-        `<Say voice="alice">${xmlEscape(prompt)}</Say>` +
-        `</Gather>` +
-        `<Say voice="alice">We did not receive a response. Goodbye.</Say>` +
-        `</Response>`
-    );
+    res.end(buildVoiceGatherTwiml(requestId, guardId, shift));
     return;
   }
 
