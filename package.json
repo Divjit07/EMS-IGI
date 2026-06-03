@@ -1,0 +1,12 @@
+{
+  "name": "shift-coverage-tool",
+  "version": "0.1.0",
+  "description": "Emergency Shift Coverage Tool — zero-install Phase 1 MVP",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

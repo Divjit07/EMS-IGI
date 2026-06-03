@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shift Coverage Console · The Investigators Group</title>
+    <link rel="icon" href="/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="appShell">
+      <!-- ============ TOP BAR ============ -->
+      <header class="topbar">
+        <div class="brand">
+          <img src="/logo.png" alt="The Investigators Group" class="brandLogo" />
+          <div class="brandText">
+            <strong>The Investigators Group</strong>
+            <span>Security Operations</span>
+          </div>
+        </div>
+
+        <div class="topbarDivider" aria-hidden="true"></div>
+
+        <div class="appName">
+          <span class="appNameLabel">Console</span>
+          <h1>Shift Coverage</h1>
+        </div>
+
+        <div class="topbarRight">
+          <div class="statusChip">
+            <span class="statusDot"></span>
+            System Online
+          </div>
+          <div class="clock" id="clock">--:--</div>
+          <div class="operator">
+            <div class="avatar">DS</div>
+            <div class="operatorText">
+              <strong>Dispatch</strong>
+              <span>Supervisor</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- ============ PAGE HEADER ============ -->
+      <section class="pageHead">
+        <div>
+          <p class="eyebrow">Emergency Dispatch</p>
+          <h2>Find coverage for an open shift</h2>
+          <p class="lede">
+            Upload the shift notice, confirm the details, and instantly surface
+            available, qualified guards near the site — ranked by distance.
+          </p>
+        </div>
+        <div class="pageHeadStats" id="pageHeadStats">
+          <div class="miniStat">
+            <span>Avg. fill time</span>
+            <strong>&lt; 2 min</strong>
+          </div>
+          <div class="miniStat">
+            <span>Active roster</span>
+            <strong id="rosterCount">—</strong>
+          </div>
+          <div class="miniStat">
+            <span>Today's shifts</span>
+            <strong id="shiftCount">—</strong>
+          </div>
+        </div>
+      </section>
+
+      <div id="toast" class="toast hidden" role="alert"></div>
+
+      <!-- ============ WORKSPACE ============ -->
+      <div class="workspace">
+        <!-- LEFT: workflow -->
+        <div class="col col--left">
+          <!-- Step 1: Upload -->
+          <section class="panel">
+            <div class="panelHead">
+              <div class="stepBadge">1</div>
+              <div>
+                <h3>Upload shift notice</h3>
+                <p>Screenshot from a group chat or scheduling system.</p>
+              </div>
+            </div>
+
+            <label class="dropzone" id="dropzone">
+              <input
+                id="fileInput"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+              />
+              <div class="dropzoneInner" id="dropzoneInner">
+                <div class="dropIcon">
+                  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <strong>Drop screenshot or browse</strong>
+                <small>PNG, JPG or WEBP · up to 8 MB</small>
+              </div>
+              <div class="dropPreview hidden" id="dropPreview">
+                <img id="previewImg" alt="Shift screenshot preview" />
+                <div class="previewMeta">
+                  <strong id="previewName">screenshot.png</strong>
+                  <button type="button" class="linkBtn" id="clearPreview">Replace</button>
+                </div>
+              </div>
+            </label>
+
+            <div id="parseNotice" class="inlineNote hidden"></div>
+          </section>
+
+          <!-- Step 2: Details -->
+          <section class="panel">
+            <div class="panelHead">
+              <div class="stepBadge">2</div>
+              <div>
+                <h3>Confirm shift details</h3>
+                <p>Adjust anything the parser missed.</p>
+              </div>
+            </div>
+
+            <div class="formGrid">
+              <label class="field">
+                <span>Shift date</span>
+                <input id="shiftDate" type="date" />
+              </label>
+              <label class="field">
+                <span>Shift code</span>
+                <input id="shiftCode" placeholder="Metro 235 (TT)" />
+              </label>
+              <label class="field">
+                <span>Start time</span>
+                <input id="startTime" type="time" />
+              </label>
+              <label class="field">
+                <span>End time</span>
+                <input id="endTime" type="time" />
+              </label>
+              <label class="field field--full">
+                <span>Site name</span>
+                <input id="siteName" placeholder="Union Station" />
+              </label>
+              <label class="field field--full">
+                <span>Site address</span>
+                <input id="siteAddress" placeholder="65 Front St W, Toronto, ON" />
+              </label>
+              <label class="field field--full">
+                <span>Quick-fill known site</span>
+                <select id="knownSite">
+                  <option value="">Select a site…</option>
+                  <option value="union">Union Station</option>
+                  <option value="eaton">Eaton Centre</option>
+                  <option value="square-one">Square One</option>
+                  <option value="yorkdale">Yorkdale Mall</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="radiusRow">
+              <span class="radiusLabel">Search radius</span>
+              <div class="segmented" id="radiusGroup">
+                <button type="button" data-radius="5">5</button>
+                <button type="button" data-radius="10" class="active">10</button>
+                <button type="button" data-radius="15">15</button>
+                <button type="button" data-radius="25">25</button>
+                <button type="button" data-radius="50">50</button>
+                <span class="segmentedUnit">km</span>
+              </div>
+            </div>
+
+            <button id="findBtn" class="primaryBtn">
+              <span class="btnLabel">Find available guards</span>
+              <span class="btnSpinner hidden"></span>
+            </button>
+          </section>
+
+          <!-- Contact activity -->
+          <section class="panel">
+            <div class="panelHead">
+              <div class="panelHeadIcon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              </div>
+              <div>
+                <h3>Contact activity</h3>
+                <p>Outreach logged this session.</p>
+              </div>
+            </div>
+            <div id="contactLog" class="timeline"></div>
+          </section>
+        </div>
+
+        <!-- RIGHT: results -->
+        <div class="col col--right">
+          <section class="panel resultsPanel">
+            <div class="resultsHead">
+              <div>
+                <p class="eyebrow eyebrow--burgundy">Step 3</p>
+                <h3>Coverage candidates</h3>
+              </div>
+              <div id="shiftSummary" class="shiftSummary hidden"></div>
+            </div>
+
+            <div id="kpiRow" class="kpiRow hidden"></div>
+
+            <div id="resultsEmpty" class="emptyState">
+              <div class="emptyIllustration">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <h4>No search run yet</h4>
+              <p>
+                Upload a shift notice or enter the details, then run the
+                availability check to see qualified guards ranked by distance.
+              </p>
+            </div>
+
+            <div id="resultsContent" class="hidden">
+              <div id="smsStatus" class="smsStatus hidden"></div>
+
+              <div class="rosterBlock">
+                <div class="rosterTitle rosterTitle--withAction">
+                  <span class="dot dot--green"></span>
+                  Available now
+                  <em id="availableCount">0</em>
+                  <button id="contactAllBtn" class="contactAllBtn" type="button">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/><path d="M8 9h8M8 13h5"/></svg>
+                    Text all available
+                  </button>
+                </div>
+                <div id="availableList" class="rosterList"></div>
+              </div>
+
+              <details id="busyBlock" class="rosterBlock rosterBlock--collapsible">
+                <summary class="rosterTitle">
+                  <span class="dot dot--red"></span>
+                  Currently on shift
+                  <em id="busyCount">0</em>
+                  <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div id="busyList" class="rosterList"></div>
+              </details>
+
+              <details id="outOfRangeBlock" class="rosterBlock rosterBlock--collapsible">
+                <summary class="rosterTitle">
+                  <span class="dot dot--amber"></span>
+                  Outside search radius
+                  <em id="outCount">0</em>
+                  <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div id="outList" class="rosterList"></div>
+              </details>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ============ FOOTER ============ -->
+      <footer class="appFooter">
+        <span>The Investigators Group Inc. · Providing Investigative Solutions Since 1995</span>
+        <span>Internal Tool · 1-800-765-8348 · info@investigators-group.com</span>
+      </footer>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

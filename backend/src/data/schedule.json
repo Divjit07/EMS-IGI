@@ -1,0 +1,72 @@
+[
+  {
+    "guard_id": "G001",
+    "guard_name": "Aisha Khan",
+    "shift_date": "2026-06-03",
+    "start_time": "07:00",
+    "end_time": "15:00",
+    "site_name": "Union Station",
+    "site_address": "65 Front St W, Toronto, ON",
+    "shift_code": "Union 101 (TT)"
+  },
+  {
+    "guard_id": "G003",
+    "guard_name": "Priya Nair",
+    "shift_date": "2026-06-03",
+    "start_time": "15:00",
+    "end_time": "23:00",
+    "site_name": "Yonge-Eglinton Centre",
+    "site_address": "2300 Yonge St, Toronto, ON",
+    "shift_code": "YEC 210 (TT)"
+  },
+  {
+    "guard_id": "G007",
+    "guard_name": "Sofia Rossi",
+    "shift_date": "2026-06-03",
+    "start_time": "08:00",
+    "end_time": "16:00",
+    "site_name": "Eaton Centre",
+    "site_address": "220 Yonge St, Toronto, ON",
+    "shift_code": "Eaton 150 (TT)"
+  },
+  {
+    "guard_id": "G009",
+    "guard_name": "Hina Patel",
+    "shift_date": "2026-06-03",
+    "start_time": "22:00",
+    "end_time": "06:00",
+    "site_name": "Yorkdale Mall",
+    "site_address": "3401 Dufferin St, North York, ON",
+    "shift_code": "York 300 (TT)"
+  },
+  {
+    "guard_id": "G012",
+    "guard_name": "Victor Lim",
+    "shift_date": "2026-06-03",
+    "start_time": "09:00",
+    "end_time": "17:00",
+    "site_name": "York University",
+    "site_address": "4700 Keele St, North York, ON",
+    "shift_code": "YorkU 410 (TT)"
+  },
+  {
+    "guard_id": "G002",
+    "guard_name": "Marcus Reid",
+    "shift_date": "2026-06-04",
+    "start_time": "07:00",
+    "end_time": "15:00",
+    "site_name": "Manulife Centre",
+    "site_address": "55 Bloor St W, Toronto, ON",
+    "shift_code": "Manulife 120 (TT)"
+  },
+  {
+    "guard_id": "G004",
+    "guard_name": "Daniel Osei",
+    "shift_date": "2026-06-04",
+    "start_time": "12:00",
+    "end_time": "20:00",
+    "site_name": "Square One",
+    "site_address": "100 City Centre Dr, Mississauga, ON",
+    "shift_code": "SqOne 235 (TT)"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "name": "shift-coverage-backend",
+  "version": "0.1.0",
+  "description": "Emergency Shift Coverage Tool — Phase 1 MVP backend",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

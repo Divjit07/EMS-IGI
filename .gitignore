@@ -1,0 +1,17 @@
+# Secrets - never commit. Set these in Render's dashboard instead.
+.env
+
+# Dependencies
+node_modules/
+
+# Cloudflare tunnel binary + logs (local dev only, platform-specific)
+bin/
+
+# Runtime state (regenerated at runtime; not source)
+state/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
